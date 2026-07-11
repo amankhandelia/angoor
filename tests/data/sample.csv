@@ -1,0 +1,6 @@
+id,name,category,price,active
+1,Widget Alpha,tools,9.99,true
+2,Widget Beta,tools,14.50,false
+3,Gadget Gamma,electronics,7.00,true
+4,Gadget Delta,electronics,12.25,true
+5,Doohickey Epsilon,misc,,false

@@ -20,4 +20,13 @@ build-backend = "hatchling.build"
 packages = ["src/angoor"]
 
 [dependency-groups]
-dev = []
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-textual-snapshot>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra"

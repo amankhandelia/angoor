@@ -9,3 +9,7 @@ wheels/
 # Virtual environments
 .venv
 /test-data
+
+# Test artifacts
+.pytest_cache/
+snapshot_report.html
