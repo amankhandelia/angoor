@@ -13,3 +13,4 @@ wheels/
 # Test artifacts
 .pytest_cache/
 snapshot_report.html
+/TODO.md

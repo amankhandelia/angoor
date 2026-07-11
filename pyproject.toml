@@ -4,10 +4,7 @@ version = "0.1.0"
 description = "VIM keybindings tabular data viewer (CSV & Parquet) built with Textual + DuckDB"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "textual>=0.86.0",
-    "duckdb>=1.1.0",
-]
+dependencies = ["textual>=0.86.0", "duckdb>=1.1.0"]
 
 [project.scripts]
 angoor = "angoor.app:main"
@@ -21,12 +18,35 @@ packages = ["src/angoor"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
-    "pytest-textual-snapshot>=1.0.0",
+  "pytest>=9.1.1",
+  "pytest-asyncio>=1.4.0",
+  "pytest-textual-snapshot>=1.0.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.ruff]
+
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+force-sort-within-sections = true
+split-on-trailing-comma = true
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "W",  # pycodestyle warnings
+  "F",  # pyflakes
+  "I",  # isort (import order)
+  "N",  # pep8-naming
+  "UP", # pyupgrade
+]
+ignore = [
+  "E501", # line length handled by formatter
+]

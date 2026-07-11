@@ -19,9 +19,10 @@ uv run angoor path/to/data.csv
 uv run angoor path/to/data.parquet
 uv run python -m angoor path/to/data.csv      # equivalent
 
-# there is NO configured lint, typecheck, or test command.
-# no tests/ dir, no ruff/mypy/black/pytest config.
-# verify changes by importing + running the app against test-data/*.csv|parquet
+# there is NO configured lint or typecheck command.
+# tests live in tests/ (pytest + pytest-asyncio + pytest-textual-snapshot).
+# run them with:  uv run python -m pytest
+# also verify by importing + running the app against test-data/*.csv|parquet
 ```
 
 Python: `>=3.12` (`.python-version` pins to `3.12`). Build backend: `hatchling` (src layout).
@@ -50,20 +51,26 @@ docs/                   # empty placeholder
 
 ### app.py — `ViewerApp(App)`
 - `__init__(path)`: **loads the table eagerly, before `app.run()` starts the Textual screen session**. This is deliberate so that file errors surface as clean stderr messages in `main()`'s try/except, not as unreadable tracebacks inside the TUI alternate screen. Do NOT move loading into `on_mount()` without preserving this guarantee.
-- `compose()`: yields `DataTable(id="table", cursor_type="cell", zebra_stripes=True)` + `Input(id="search-bar", classes="hidden")`.
-- `on_mount()`: populates the DataTable from `self.columns` / `self.rows` (already loaded in `__init__`).
-- Keybindings are **NOT** Textual `BINDINGS` (except `escape`→`cancel_search` and `ctrl+c`→`quit`). Everything else is a manual state machine in `on_key` because of 2-key chords (`gg`, `yy`, `yc`, `ye`, `//`).
+- `compose()`: yields `DataTable(id="table", cursor_type="cell", zebra_stripes=True)` + `Input(id="search-bar", classes="hidden")` + `Label(id="footer")` (lazygit-style help pinned at the bottom).
+- `on_mount()`: populates the DataTable from `self.columns` / `self.rows` (already loaded in `__init__`). A **headerless index column** (`add_column("", key="__index__")`) is inserted first, so DataTable columns are `index, <data cols>`; a row's displayed values are `str(i), *_fmt_display(...)`. `self.columns`/`self.rows` stay data-only — translate DataTable col ↔ data col via `_value_at(r, c)` (col 0 → row number, else `self.rows[r][c-1]`).
+- Keybindings are **NOT** Textual `BINDINGS` (except `escape`→`cancel_search` and `ctrl+c`→`quit`). Everything else is a manual state machine in `on_key` because of 2-key chords (`gg`, `yy`, `yc`, `//`).
 - `self._pending: str | None` holds the first key of a pending 2-key chord (`g`, `y`, or `/`). Next key dispatches via `_handle_followup`.
 - **`glyph = event.character or event.key`** — critical: Textual reports punctuation as symbolic names (`slash`, `dollar`, `circumflex`), so we must compare against the printable char, not `event.key`. Without this, `/ ^ $` would never match.
-- **Search is in-memory Python substring matching** over `self.rows`, NOT DuckDB SQL. DuckDB is only used at load time. `_do_search` is case-insensitive (`.lower()`), wraps around (cursor+1→end→start→cursor), and only moves to the first match; use `n` to repeat.
-  - `/` then a non-`/` key → opens row search input seeded with that key (so `/foo` types `foo` into the bar).
-  - `//` → column search (empty seed).
-- **Copy** reads from `self.rows` (not the widget), formatted via `_fmt` (None→`""`):
-  - `ye` cell, `yc` column (newline-joined), `yy` row (TAB-joined → paste-into-spreadsheet friendly).
+- **Display minification**: `_fmt_display(value)` = `_minify(_fmt(value))` — Apple-style middle truncation (`start…end`) at `_MAX_CELL_WIDTH` (40). Long cells are shortened for the table only; `v` opens a `CellViewerScreen` modal (`ModalScreen` with a read-only `TextArea`) showing the **full** raw value, dismissed with `Esc`.
+- **Search is in-memory Python substring matching** over the displayed cells (`_value_at(r,c)`), NOT DuckDB SQL. DuckDB is only used at load time. `_do_search` is case-insensitive (`.lower()`), wraps around (cursor+1→end→start→cursor), and only moves to the first match; use `n` to repeat.
+  - The search bar **only appears once the user types a printable char**. `/` then a non-`/` key → row search seeded with that key (bar revealed immediately with the seed). `//` → column search with the bar kept **hidden** until the first printable key; until then the `#footer` label shows "ROW SEARCH"/"COL SEARCH" instead of the help text. `Esc` (handled explicitly in `on_key` when the bar is still hidden) cancels.
+- **Copy** reads via `_value_at` then `_fmt` (None→`""`), NOT from the widget:
+  - `yw` cell, `yc` column (newline-joined), `yy` row (comma-joined). Index column (col 0) copies the row number.
   - Uses `self.copy_to_clipboard(...)` (OSC52) + `self.notify(...)`.
 
 ### Keymap (source of truth: README.md)
-`h j k l` move · `gg` top · `G` last row · `^` row start · `$` row end · `q` quit · `ye/yc/yy` copy cell/col/row · `/` row search · `//` col search · `n` repeat search · `Esc` cancel search · `Ctrl+C` quit.
+`h j k l` move · `gg` first row · `gh` header · `G` last row · `^` row start · `$` row end · `q` quit · `yw/yc/yy` copy cell/col/row · `v` view cell · `/` row search · `//` col search · `n` repeat search · `Esc` cancel search · `Ctrl+C` quit.
+
+### Header mode (`gh`)
+Textual's `DataTable` cannot host its cursor on the header row, so "being in the header" is app-level state: `self._in_header: bool`. While True the DataTable cursor stays parked on row 0 and reads are translated via `_header_name(col)` (col 0 → `""` the headerless index, else `self.columns[col-1]`).
+- Entry: `gh` chord → `_enter_header()` (moves cursor to row 0, preserving column, sets flag, updates footer to `_HEADER_HELP`).
+- `j` exits (`_exit_header`) and stays on row 0 (header is conceptually row −1). `k` is a no-op (can't go above header). `G`/`gg` exit + go to last/first row. `h`/`l`/`^`/`$` move the active column and KEEP header mode.
+- `yw` copies the header name; `yy` copies all header names comma-joined; `v` opens the cell viewer with the header name; `yc` is unchanged (copies the column's data values — "rest of the behaviour remains the same"). Row search (`/`) searches across header names; col search (`//`) still searches the column's values.
 
 ## Conventions
 
