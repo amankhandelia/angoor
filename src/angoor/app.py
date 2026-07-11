@@ -52,7 +52,9 @@ class ViewerApp(App):
 
     def compose(self) -> ComposeResult:
         yield DataTable(id="table", cursor_type="cell", zebra_stripes=True)
-        yield Input(id="search-bar", placeholder="search…", classes="hidden")
+        yield Input(
+            id="search-bar", placeholder="search…", classes="hidden", select_on_focus=False
+        )
 
     def on_mount(self) -> None:
         table = self.query_one("#table", DataTable)
