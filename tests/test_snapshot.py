@@ -71,3 +71,21 @@ def test_snapshot_parquet_view(sample_parquet, snap_compare):
         ViewerApp(str(sample_parquet)),
         terminal_size=TERMINAL_SIZE,
     )
+
+
+def test_snapshot_header_mode(sample_csv, snap_compare):
+    """`gh` lights up the header cell at the active column (col 2, "name")."""
+    assert snap_compare(
+        _app(sample_csv),
+        press=["l", "l", "g", "h"],
+        terminal_size=TERMINAL_SIZE,
+    )
+
+
+def test_snapshot_cell_viewer_open(sample_csv, snap_compare):
+    """`v` on a cell opens the modal viewer; the footer switches to viewer hints."""
+    assert snap_compare(
+        _app(sample_csv),
+        press=["l", "l", "v"],
+        terminal_size=TERMINAL_SIZE,
+    )

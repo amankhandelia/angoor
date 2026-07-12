@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, call
 
 import pytest
 from textual.coordinate import Coordinate
-from textual.widgets import DataTable, Input, Label
+from textual.widgets import DataTable, Input, Label, TextArea
 
-from angoor.app import ViewerApp
+from angoor.app import ViewerApp, ViewerDataTable
 
 ROWS, COLS = 5, 5
 # Column 0 is the headerless index column; data columns live at 1..COLS.
@@ -28,8 +28,13 @@ def make_app(csv_path: Path, clipboard: MagicMock | None = None) -> ViewerApp:
     return app
 
 
-def _table(app: ViewerApp) -> DataTable:
-    return app.query_one("#table", DataTable)
+def _table(app: ViewerApp) -> ViewerDataTable:
+    return app.query_one("#table", ViewerDataTable)
+
+
+def _footer_text(app: ViewerApp) -> str:
+    """Plain-text content of the help footer (rich markup stripped)."""
+    return str(app.query_one("#footer", Label).content)
 
 
 def _bar(app: ViewerApp) -> Input:
@@ -468,8 +473,7 @@ async def test_footer_shows_help_initially(sample_csv):
     app = make_app(sample_csv)
     async with app.run_test() as pilot:
         await pilot.pause()
-        footer = app.query_one("#footer", Label)
-        assert "hjkl" in str(footer._Static__content)
+        assert "hjkl" in _footer_text(app)
 
 
 async def test_footer_shows_search_mode(sample_csv):
@@ -478,11 +482,25 @@ async def test_footer_shows_search_mode(sample_csv):
         await pilot.pause()
         await pilot.press("/", "/")
         await pilot.pause()
-        footer = app.query_one("#footer", Label)
-        assert "COL SEARCH" in str(footer._Static__content)
+        assert "COL SEARCH" in _footer_text(app)
         await pilot.press("escape")
         await pilot.pause()
-        assert "hjkl" in str(app.query_one("#footer", Label)._Static__content)
+        assert "hjkl" in _footer_text(app)
+
+
+async def test_footer_keys_are_highlighted(sample_csv):
+    """The footer uses lazygit-style `key: description | key: description` hints."""
+    from angoor.app import _help_text
+
+    text = _help_text()
+    # Each pair reads "<key> <description>"; first pair is "hjkl move".
+    plain = str(text)
+    assert plain.startswith("hjkl move")
+    assert " | " in plain
+    # The keys carry a bold-cyan span so the eye is drawn to them.
+    spans = [span for span in text.spans if str(text)[span.start : span.end].strip()]
+    styles = {str(span.style) for span in spans}
+    assert any("bold" in s and "cyan" in s for s in styles)
 
 
 # ----------------------------------------------------------------- search reveal
@@ -662,7 +680,7 @@ async def test_v_in_header_views_header_name(sample_csv):
         screens = app.screen_stack
         assert any(s.__class__.__name__ == "CellViewerScreen" for s in screens)
         viewer = next(s for s in screens if s.__class__.__name__ == "CellViewerScreen")
-        assert viewer.text == "name"
+        assert viewer.text == "name"  # type: ignore[union-attr]
         await pilot.press("escape")
         await pilot.pause()
         assert not any(s.__class__.__name__ == "CellViewerScreen" for s in app.screen_stack)
@@ -706,11 +724,10 @@ async def test_footer_shows_header_mode(sample_csv):
     async with app.run_test() as pilot:
         await pilot.press("g", "h")
         await pilot.pause()
-        footer = app.query_one("#footer", Label)
-        assert "HEADER" in str(footer._Static__content)
+        assert "exit header" in _footer_text(app)
         await pilot.press("j")
         await pilot.pause()
-        assert "hjkl" in str(app.query_one("#footer", Label)._Static__content)
+        assert "hjkl" in _footer_text(app)
 
 
 async def test_malformed_g_then_h_is_not_header(sample_csv):
@@ -725,3 +742,185 @@ async def test_malformed_g_then_h_is_not_header(sample_csv):
         await pilot.pause()
         assert app._in_header is False
         assert table.cursor_coordinate.column == col_before - 1
+
+
+# ----------------------------------------------------------------- header highlight
+
+
+async def test_header_highlight_column_tracks_cursor_on_enter(sample_csv):
+    """TODO 1: `gh` visually highlights the header cell at the active column."""
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("l", "l", "l")  # col 3
+        await pilot.press("g", "h")
+        await pilot.pause()
+        assert app._in_header is True
+        assert table._header_active_column == 3
+        # DataTable cursor still parks on row 0; the highlight is the header.
+        assert table.cursor_coordinate == Coordinate(0, 3)
+
+
+async def test_header_highlight_moves_with_h_l(sample_csv):
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("g", "h")
+        await pilot.pause()
+        assert table._header_active_column == 0
+        await pilot.press("l", "l")
+        await pilot.pause()
+        assert app._in_header is True
+        assert table._header_active_column == 2
+        await pilot.press("h")
+        await pilot.pause()
+        assert table._header_active_column == 1
+
+
+async def test_header_highlight_cleared_on_j_exit(sample_csv):
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("l", "l")
+        await pilot.press("g", "h")
+        await pilot.pause()
+        assert table._header_active_column == 2
+        await pilot.press("j")
+        await pilot.pause()
+        assert app._in_header is False
+        assert table._header_active_column is None
+
+
+async def test_header_highlight_cleared_on_G_exit(sample_csv):
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("g", "h")
+        await pilot.pause()
+        assert table._header_active_column is not None
+        await pilot.press("G")
+        await pilot.pause()
+        assert app._in_header is False
+        assert table._header_active_column is None
+
+
+async def test_header_highlight_cleared_on_gg_exit(sample_csv):
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("g", "h")
+        await pilot.pause()
+        await pilot.press("g", "g")
+        await pilot.pause()
+        assert app._in_header is False
+        assert table._header_active_column is None
+
+
+async def test_header_highlight_updates_after_row_search_in_header(sample_csv):
+    """A row search performed in header mode lands on a new column; the
+    header highlight follows the new column (the cursor parks on row 0)."""
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("g", "h")
+        await pilot.press("/", "n", "a", "m", "e")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app._in_header is True
+        assert table.cursor_coordinate == Coordinate(0, 2)
+        assert table._header_active_column == 2
+
+
+# ----------------------------------------------------------------- v-mode scrolling
+
+
+async def test_viewer_scroll_keys_do_not_move_data_cursor(sample_csv):
+    """TODO 2/3: j/k inside the cell viewer scroll the popup, NOT the DataTable."""
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("l", "l", "j")  # row 1, "name" column (col 2)
+        await pilot.pause()
+        before = table.cursor_coordinate
+        assert before == Coordinate(1, 2)
+
+        await pilot.press("v")
+        await pilot.pause()
+        # The viewer is open on top — its keys should be intercepted there.
+        assert any(s.__class__.__name__ == "CellViewerScreen" for s in app.screen_stack)
+
+        # A flurry of navigation keys must NOT move the underlying cursor.
+        await pilot.press("j", "j", "k", "k", "j", "l", "k", "h")
+        await pilot.pause()
+        assert table.cursor_coordinate == before
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not any(s.__class__.__name__ == "CellViewerScreen" for s in app.screen_stack)
+
+
+async def test_viewer_scroll_jk_advances_text_area_scroll(tmp_path):
+    """TODO 2: j/k inside the cell viewer scroll the TextArea content downward/upward."""
+    from angoor.app import CellViewerScreen
+
+    long_text = "\n".join(f"line {i:03d} " + ("x" * 60) for i in range(200))
+    csv = tmp_path / "tall.csv"
+    csv.write_text("a\n" + ",".join([long_text.replace("\n", " ")]) + "\n")
+    app = make_app(csv)
+    async with app.run_test() as pilot:
+        await pilot.press("l")  # long cell column
+        await pilot.press("v")
+        await pilot.pause()
+        viewer = next(s for s in app.screen_stack if s.__class__.__name__ == "CellViewerScreen")
+        ta = viewer.query_one(TextArea)
+        await pilot.pause()
+        start_y = ta.scroll_offset.y
+        await pilot.press("j", "j")
+        await pilot.pause()
+        assert ta.scroll_offset.y > start_y
+        await pilot.press("k")
+        await pilot.pause()
+        assert ta.scroll_offset.y == start_y + 1
+        # j/down are interchangeable; arrow down reaches the screen action too.
+        await pilot.press("down")
+        await pilot.pause()
+        assert ta.scroll_offset.y == start_y + 2
+        await pilot.press("escape")
+        await pilot.pause()
+
+
+async def test_yw_in_viewer_copies_opened_cell_after_scroll(sample_csv, clipboard):
+    """TODO 3: yw inside the viewer copies the OPENED cell, not whatever cell
+    the underlying cursor would point at after j/k scrolling."""
+    app = make_app(sample_csv, clipboard)
+    async with app.run_test() as pilot:
+        table = _table(app)
+        await pilot.press("l", "l", "j")  # row 1, col 2 -> "Widget Beta"
+        await pilot.pause()
+        opened_at = table.cursor_coordinate
+        assert opened_at == Coordinate(1, 2)
+
+        await pilot.press("v")
+        await pilot.pause()
+        # Scroll around inside the viewer; this must not perturb the cursor.
+        await pilot.press("j", "j", "k", "l", "k")
+        await pilot.pause()
+        assert table.cursor_coordinate == opened_at
+        # yw in the viewer copies the cell that was opened (Widget Beta).
+        await pilot.press("y", "w")
+        await pilot.pause()
+        clipboard.assert_called_once_with("Widget Beta")
+
+
+async def test_viewer_footer_shown_and_restored_on_close(sample_csv):
+    app = make_app(sample_csv)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert "hjkl" in _footer_text(app)
+        await pilot.press("v")
+        await pilot.pause()
+        assert "CELL VIEWER" in _footer_text(app)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert "hjkl" in _footer_text(app)
