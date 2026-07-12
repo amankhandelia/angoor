@@ -30,9 +30,7 @@ def load_table(path: str | Path) -> tuple[list[str], list[tuple]]:
 
     reader = _READERS.get(p.suffix.lower())
     if reader is None:
-        raise UnsupportedFileError(
-            f"Unsupported file type: {p.suffix!r}. Supported: csv, parquet"
-        )
+        raise UnsupportedFileError(f"Unsupported file type: {p.suffix!r}. Supported: csv, parquet")
 
     con = duckdb.connect()
     try:

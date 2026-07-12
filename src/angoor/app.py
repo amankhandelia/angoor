@@ -14,11 +14,7 @@ from textual.widgets import DataTable, Input, Label, TextArea
 from .backend import load_table
 
 _MAX_CELL_WIDTH = 40
-_HELP = (
-    "hjkl move  gg top  gh header  G last  ^/$ ends  "
-    "yw cell  yc col  yy row  / row  // col  "
-    "n next  v view  q quit"
-)
+_HELP = "hjkl move  gg top  gh header  G last  ^/$ ends  yw cell  yc col  yy row  / row  // col  n next  v view  q quit"
 _HEADER_HELP = "HEADER  ·  yw copy name  ·  j back to rows"
 
 
@@ -110,9 +106,7 @@ class ViewerApp(App):
 
     def compose(self) -> ComposeResult:
         yield DataTable(id="table", cursor_type="cell", zebra_stripes=True)
-        yield Input(
-            id="search-bar", placeholder="search…", classes="hidden", select_on_focus=False
-        )
+        yield Input(id="search-bar", placeholder="search…", classes="hidden", select_on_focus=False)
         yield Label(_HELP, id="footer")
 
     def on_mount(self) -> None:
@@ -233,9 +227,7 @@ class ViewerApp(App):
     def _go_to_last_row(self) -> None:
         table = self._table()
         if table.row_count:
-            table.move_cursor(
-                row=table.row_count - 1, column=table.cursor_coordinate.column
-            )
+            table.move_cursor(row=table.row_count - 1, column=table.cursor_coordinate.column)
 
     def _go_to_row_start(self) -> None:
         table = self._table()
@@ -245,9 +237,7 @@ class ViewerApp(App):
     def _go_to_row_end(self) -> None:
         table = self._table()
         if table.row_count:
-            table.move_cursor(
-                row=table.cursor_coordinate.row, column=len(table.columns) - 1
-            )
+            table.move_cursor(row=table.cursor_coordinate.row, column=len(table.columns) - 1)
 
     # ---------------------------------------------------------------- copy
 
@@ -336,21 +326,15 @@ class ViewerApp(App):
                 cells = [self._header_name(cc).lower() for cc in range(n_cols)]
             else:
                 cells = [self._fmt(self._value_at(r, cc)).lower() for cc in range(n_cols)]
-            search_order = list(range(coord.column + 1, n_cols)) + list(
-                range(0, coord.column + 1)
-            )
+            search_order = list(range(coord.column + 1, n_cols)) + list(range(0, coord.column + 1))
             for c in search_order:
                 if needle in cells[c]:
                     table.move_cursor(row=r, column=c)
                     return
         elif mode == "col":
             c = coord.column
-            col_vals = [
-                self._fmt(self._value_at(rr, c)).lower() for rr in range(len(self.rows))
-            ]
-            search_order = list(range(coord.row + 1, len(col_vals))) + list(
-                range(0, coord.row + 1)
-            )
+            col_vals = [self._fmt(self._value_at(rr, c)).lower() for rr in range(len(self.rows))]
+            search_order = list(range(coord.row + 1, len(col_vals))) + list(range(0, coord.row + 1))
             for r in search_order:
                 if needle in col_vals[r]:
                     table.move_cursor(row=r, column=c)

@@ -1,4 +1,5 @@
 """Generate a small deterministic Parquet fixture for tests."""
+
 from __future__ import annotations
 
 from pathlib import Path

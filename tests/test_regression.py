@@ -641,7 +641,7 @@ async def test_yy_in_header_copies_header_names(sample_csv, clipboard):
 
 
 async def test_yc_in_header_still_copies_column_values(sample_csv, clipboard):
-    """"rest of the behaviour remains the same": yc copies the column values."""
+    """ "rest of the behaviour remains the same": yc copies the column values."""
     app = make_app(sample_csv, clipboard)
     async with app.run_test() as pilot:
         await pilot.press("g", "h")
